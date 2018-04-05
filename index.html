@@ -1,0 +1,236 @@
+<!--
+A Simple Attention Visualizer for Text Classification,
+based on the attention visualizer by Abigail See, available at
+https://github.com/abisee/attn_vis
+-->
+
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <title>Attention Visualizer</title>
+  <meta name="description" content="">
+  <meta name="author" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="external/d3.min.js"></script>
+  <script src="external/jquery-3.1.0.min.js"></script>
+  <script src="external/underscore-min.js"></script>
+  <script src="external/sprintf.min.js"></script>
+  <link href="external/semantic.min.css" rel="stylesheet" type="text/css">
+  <link href='http://fonts.googleapis.com/css?family=Cousine' rel='stylesheet' type='text/css'>
+
+  <style>
+  #wrap {
+    font-family: 'Cousine';
+    position:relative;
+    margin: 10px;
+    font-size: 15px;
+  }
+  .buttons {
+    margin: 20px 0;
+  }
+  </style>
+  <script>
+
+  // global variables
+  json_fname = "attentions.json" // file containing the text and the weights
+
+  greenhue = 151
+  yellowhue = 56
+  redhue = 0
+  cur_idx = 0 // define initial global data idx
+  max_len = 0
+
+  // do not use cache for data
+  $.ajaxSetup({
+    cache:false
+  });
+
+  function start() {
+    console.log("start")
+    load_data_and_show()
+
+    // Define a tooltip that we will use to display attention weight when you hover over a word
+    var tooltip = d3.select("body")
+        .append("div")
+        .style("position", "absolute")
+        .style("z-index", "10")
+        .style("visibility", "hidden")
+        .style("background", "white")
+        .style("font-size", "15px")
+        .style("color", "#ff8000")
+        .style("font-family", "Cousine")
+        .text("a simple tooltip");
+    gtooltip = tooltip // global
+  }
+
+  function load_data_and_show() {
+    // Retrieve the json data file and display the data
+    console.log("fetching " + json_fname + "...")
+
+    function json_success(data) {
+      // Displays the data
+      console.log("Data loaded.")
+      d3.select("#datafile").html('<font color="09B509">Currently displaying: ' + json_fname + "</font>")
+      max_len = data.length
+      render_text(d3.select("#text"), data, cur_idx);
+      render_label(d3.select("#label"), data, cur_idx);
+      render_pred(d3.select("#pred"), data, cur_idx);
+      render_id(d3.select("#textid"), cur_idx);
+
+      d3.select("#next").on('click', handleClickNext(data));
+      d3.select("#last").on('click', handleClickLast(data));
+    }
+
+    function json_fail(d) {
+      // Tell the user it failed to load
+      console.log("Fail to load the data.")
+      d3.select("#datafile").html('<font color="red">Failed to load ' + json_fname + "</font>")
+    }
+
+    $.getJSON(json_fname, json_success).fail(json_fail);
+  }
+
+  function round(x, dp) {
+    // round a float to dp decimal places
+    var power_of_10 = 10**dp
+    return Math.round(x*power_of_10)/power_of_10
+  }
+
+  function toColor(p, hue) {
+    // converts a scalar value p in [0,1] to a HSL color code string with base color hue
+    if (p<0 || p>1) {
+      throw sprintf("Error: p has value %.2f but should be in [0,1]", p)
+    }
+    var saturation = 100 // saturation percentage
+    p = 1-p // invert so p=0 is light and p=1 is dark
+    var min_lightness = 10 // minimum percentage lightness, i.e. darkest possible color
+    var lightness = (min_lightness + p*(100-min_lightness)) // lightness is proportional to p
+    return sprintf('hsl(%d,%s%%,%s%%)', hue, saturation, lightness)
+  }
+
+  function render_text(div, data, idx) {
+    var startix = 0;
+    var endix = data[idx].words.length
+    var attn_len = data[idx].words[0].length
+
+    div.html(''); // flush
+    for(var i=startix; i<endix; i++) {
+      var word = data[idx].words[i]; // a string
+      var attn_wt = data[idx].weights[i];
+      var background_color = toColor(attn_wt, redhue);
+      var css = 'background-color:' + background_color;
+      css += ';display:inline'
+      var word_html = word + ' '
+
+      // write the sentence/word
+      var dnew = div.append('div');
+      dnew.attr('class', 'd')
+        .attr('style', css) // apply this style
+        .html(word_html)
+        // add interactivity for mouseover tooltip
+        .on('mouseover', getHandleMouseOver(attn_wt))
+        .on('mousemove', handleMouseMove)
+        .on('mouseout', handleMouseOut)
+    }
+  }
+
+  function render_label(div, data, idx) {
+    div.html(''); // flush
+    var dnew = div.append('div');
+    dnew.html(data[idx].label);
+  }
+
+  function render_pred(div, data, idx) {
+    div.html(''); // flush
+    var dnew = div.append('div');
+    dnew.html(data[idx].prediction);
+  }
+
+  function render_id(div, idx) {
+    div.html(''); // flush
+    var dnew = div.append('div');
+    dnew.html(idx+1 + " / " + max_len);
+  }
+
+  function getHandleMouseOver(weight) {
+    return function() {
+      // Show a tooltip giving the weight value
+      gtooltip.text(round(weight, 3))
+      return gtooltip.style("visibility", "visible");
+    }
+  }
+
+  function handleMouseMove() {
+    return gtooltip.style("top", (d3.event.pageY-20)+"px").style("left",(d3.event.pageX+10)+"px");
+  }
+
+  function handleMouseOut() {
+    return gtooltip.style("visibility", "hidden");
+  }
+
+  function handleClickNext(data, idx) {
+    return function() {
+      if (cur_idx >= max_len - 1) {
+        return
+      }
+      cur_idx++
+      render_text(d3.select("#text"), data, cur_idx)
+      render_label(d3.select("#label"), data, cur_idx)
+      render_pred(d3.select("#pred"), data, cur_idx)
+      render_id(d3.select("#textid"), cur_idx);
+    }
+  }
+
+  function handleClickLast(data, idx) {
+    return function() {
+      if (cur_idx <= 0) {
+        return
+      }
+      cur_idx--
+      render_text(d3.select("#text"), data, cur_idx)
+      render_label(d3.select("#label"), data, cur_idx)
+      render_pred(d3.select("#pred"), data, cur_idx)
+      render_id(d3.select("#textid"), cur_idx);
+    }
+  }
+
+  </script>
+  </head>
+
+  
+  <body onload="start();">
+    <div id="wrap">
+      <div id="datafile">
+        Current datafile name goes here.
+      </div>
+      <div class="buttons">
+        <button class="ui labeled icon button" id="last">
+          <i class="left arrow icon"></i>
+          Last example
+        </button>
+        <button class="ui right labeled icon button" id="next">
+          <i class="right arrow icon"></i>
+          Next example
+        </button>
+      </div>
+      <h2>ID</h2>
+      <div id="textid">
+        ID goes here
+      </div>
+      <h2>Text</h2>
+      <div id="text">
+        Text goes here
+      </div>
+      <h2>Label</h2>
+      <div id="label">
+        Label goes here
+      </div>
+      <h2>Prediction</h2>
+      <div id="pred">
+        Prediction goes here
+      </div>
+    </div>
+  </body>
+</html>
