@@ -16,6 +16,3 @@ python -m http.server
 And go to `http://localhost:8000/` in your browser.
 
 
-### TODO
-
-- Data filtering based on labels or predictions

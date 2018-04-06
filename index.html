@@ -17,6 +17,7 @@ https://github.com/abisee/attn_vis
   <script src="external/jquery-3.1.0.min.js"></script>
   <script src="external/underscore-min.js"></script>
   <script src="external/sprintf.min.js"></script>
+  <script src="external/semantic.min.js"></script>
   <link href="external/semantic.min.css" rel="stylesheet" type="text/css">
   <link href='http://fonts.googleapis.com/css?family=Cousine' rel='stylesheet' type='text/css'>
 
@@ -49,7 +50,7 @@ https://github.com/abisee/attn_vis
 
   function start() {
     console.log("start")
-    load_data_and_show()
+    load_and_render()
 
     // Define a tooltip that we will use to display attention weight when you hover over a word
     var tooltip = d3.select("body")
@@ -65,49 +66,67 @@ https://github.com/abisee/attn_vis
     gtooltip = tooltip // global
   }
 
-  function load_data_and_show() {
+  function load_and_render() {
     // Retrieve the json data file and display the data
     console.log("fetching " + json_fname + "...")
 
-    function json_success(data) {
-      // Displays the data
-      console.log("Data loaded.")
-      d3.select("#datafile").html('<font color="09B509">Currently displaying: ' + json_fname + "</font>")
-      max_len = data.length
-      render_text(d3.select("#text"), data, cur_idx);
-      render_label(d3.select("#label"), data, cur_idx);
-      render_pred(d3.select("#pred"), data, cur_idx);
-      render_id(d3.select("#textid"), cur_idx);
-
-      d3.select("#next").on('click', handleClickNext(data));
-      d3.select("#last").on('click', handleClickLast(data));
-    }
-
-    function json_fail(d) {
+    function json_fail(data) {
       // Tell the user it failed to load
       console.log("Fail to load the data.")
       d3.select("#datafile").html('<font color="red">Failed to load ' + json_fname + "</font>")
     }
 
-    $.getJSON(json_fname, json_success).fail(json_fail);
+    $.getJSON(json_fname, function(data) {
+      all_data = data.slice(0)
+      initialize_filter(all_data)
+      render_data(data)
+    }).fail(json_fail);
   }
 
-  function round(x, dp) {
-    // round a float to dp decimal places
-    var power_of_10 = 10**dp
-    return Math.round(x*power_of_10)/power_of_10
+  function render_data(data) {
+    // Displays the data
+    console.log("Data loaded.")
+    d3.select("#datafile").html('<font color="09B509">Currently displaying: ' + json_fname + "</font>")
+    max_len = data.length
+    render_text(d3.select("#text"), data, cur_idx)
+    render_label(d3.select("#label"), data, cur_idx)
+    render_pred(d3.select("#pred"), data, cur_idx)
+    render_id(d3.select("#textid"), cur_idx)
+
+    d3.select("#next").on('click', handleClickNext(data))
+    d3.select("#last").on('click', handleClickLast(data))
+    d3.select("#reload").on('click', reload_all)
+    d3.select("#filter").on('click', filter_data(all_data))
   }
 
-  function toColor(p, hue) {
-    // converts a scalar value p in [0,1] to a HSL color code string with base color hue
-    if (p<0 || p>1) {
-      throw sprintf("Error: p has value %.2f but should be in [0,1]", p)
+  function reload_all(){
+    cur_idx = 0
+    load_and_render()
+  }
+
+  function initialize_filter(data) {
+    // get options
+    var label_set = new Set()
+    data.forEach(function(d) {label_set.add(d.label)})
+    console.log(label_set)
+    var filter = $("#filter-select")
+    filter.html("")
+      .append("<option value=\"\">Labels</option>")
+    for (let l of label_set) {
+      filter.append("<option value=\"" + l + "\">" + l + "</option>")
     }
-    var saturation = 100 // saturation percentage
-    p = 1-p // invert so p=0 is light and p=1 is dark
-    var min_lightness = 10 // minimum percentage lightness, i.e. darkest possible color
-    var lightness = (min_lightness + p*(100-min_lightness)) // lightness is proportional to p
-    return sprintf('hsl(%d,%s%%,%s%%)', hue, saturation, lightness)
+    $("#filter-select").dropdown();
+  }
+  
+  function filter_data(data) {
+    return function() {
+      var values = $("#filter-select").dropdown('get value')
+      if (values.length > 0) {
+        var selected = new Set(values)
+        data = data.filter(d => selected.has(d.label))
+      }
+      render_data(data)
+    }
   }
 
   function render_text(div, data, idx) {
@@ -115,12 +134,12 @@ https://github.com/abisee/attn_vis
     var endix = data[idx].words.length
     var attn_len = data[idx].words[0].length
 
-    div.html(''); // flush
+    div.html('') // flush
     for(var i=startix; i<endix; i++) {
-      var word = data[idx].words[i]; // a string
-      var attn_wt = data[idx].weights[i];
-      var background_color = toColor(attn_wt, redhue);
-      var css = 'background-color:' + background_color;
+      var word = data[idx].words[i] // a string
+      var attn_wt = data[idx].weights[i]
+      var background_color = toColor(attn_wt, redhue)
+      var css = 'background-color:' + background_color
       css += ';display:inline'
       var word_html = word + ' '
 
@@ -196,6 +215,24 @@ https://github.com/abisee/attn_vis
     }
   }
 
+  function round(x, dp) {
+    // round a float to dp decimal places
+    var power_of_10 = 10**dp
+    return Math.round(x*power_of_10)/power_of_10
+  }
+
+  function toColor(p, hue) {
+    // converts a scalar value p in [0,1] to a HSL color code string with base color hue
+    if (p<0 || p>1) {
+      throw sprintf("Error: p has value %.2f but should be in [0,1]", p)
+    }
+    var saturation = 100 // saturation percentage
+    p = 1-p // invert so p=0 is light and p=1 is dark
+    var min_lightness = 10 // minimum percentage lightness, i.e. darkest possible color
+    var lightness = (min_lightness + p*(100-min_lightness)) // lightness is proportional to p
+    return sprintf('hsl(%d,%s%%,%s%%)', hue, saturation, lightness)
+  }
+
   </script>
   </head>
 
@@ -214,20 +251,33 @@ https://github.com/abisee/attn_vis
           <i class="right arrow icon"></i>
           Next example
         </button>
+        <select class="ui selection dropdown" multiple="" id="filter-select">
+          <option value="">Labels</option>
+        </select>
+        <button class="ui button" id="filter">
+          Filter
+        </button>
+        <button class="ui button right floated" id="reload">
+          <i class="redo icon"></i>
+          Reload
+        </button>
       </div>
-      <h2>ID</h2>
+      <h4 class="ui horizontal divider header">
+          Current example
+      </h4>
+      <h3>ID</h3>
       <div id="textid">
         ID goes here
       </div>
-      <h2>Text</h2>
+      <h3>Text</h3>
       <div id="text">
         Text goes here
       </div>
-      <h2>Label</h2>
+      <h3>Label</h3>
       <div id="label">
         Label goes here
       </div>
-      <h2>Prediction</h2>
+      <h3>Prediction</h3>
       <div id="pred">
         Prediction goes here
       </div>
