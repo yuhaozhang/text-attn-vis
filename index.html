@@ -78,7 +78,7 @@ https://github.com/abisee/attn_vis
 
     $.getJSON(json_fname, function(data) {
       all_data = data.slice(0)
-      initialize_filter(all_data)
+      initialize_filters(all_data)
       render_data(data)
     }).fail(json_fail);
   }
@@ -104,28 +104,50 @@ https://github.com/abisee/attn_vis
     load_and_render()
   }
 
-  function initialize_filter(data) {
+  function initialize_filters(data) {
     // get options
     var label_set = new Set()
-    data.forEach(function(d) {label_set.add(d.label)})
-    console.log(label_set)
-    var filter = $("#filter-select")
-    filter.html("")
+    var pred_set = new Set()
+    data.forEach(function(d) {
+      label_set.add(d.label)
+      pred_set.add(d.prediction)
+    })
+    var lfilter = $("#filter-label-select")
+    var pfilter = $("#filter-pred-select")
+    lfilter.html("")
       .append("<option value=\"\">Labels</option>")
+    pfilter.html("")
+      .append("<option value=\"\">Predictions</option>")
     for (let l of label_set) {
-      filter.append("<option value=\"" + l + "\">" + l + "</option>")
+      lfilter.append("<option value=\"" + l + "\">" + l + "</option>")
     }
-    $("#filter-select").dropdown();
+    for (let p of pred_set) {
+      pfilter.append("<option value=\"" + p + "\">" + p + "</option>")
+    }
+    lfilter.dropdown();
+    pfilter.dropdown();
   }
   
   function filter_data(data) {
     return function() {
-      var values = $("#filter-select").dropdown('get value')
-      if (values.length > 0) {
-        var selected = new Set(values)
+      var lvalues = $("#filter-label-select").dropdown('get value')
+      var pvalues = $("#filter-pred-select").dropdown('get value')
+      // filter on labels
+      if (lvalues.length > 0) {
+        var selected = new Set(lvalues)
         data = data.filter(d => selected.has(d.label))
       }
-      render_data(data)
+      // filter on predictions
+      if (pvalues.length > 0) {
+        var selected = new Set(pvalues)
+        data = data.filter(d => selected.has(d.prediction))
+      }
+      if (data.length == 0) {
+        console.log("No data to show.")
+        show_data_empty_msg()
+      } else {
+        render_data(data)
+      }
     }
   }
 
@@ -215,6 +237,12 @@ https://github.com/abisee/attn_vis
     }
   }
 
+  function show_data_empty_msg() {
+    $('#no-data-msg').removeClass('hidden').on('click', function() {
+        $(this).closest('.message').addClass("hidden");
+    });
+  }
+
   function round(x, dp) {
     // round a float to dp decimal places
     var power_of_10 = 10**dp
@@ -242,6 +270,7 @@ https://github.com/abisee/attn_vis
       <div id="datafile">
         Current datafile name goes here.
       </div>
+      
       <div class="buttons">
         <button class="ui labeled icon button" id="last">
           <i class="left arrow icon"></i>
@@ -251,8 +280,11 @@ https://github.com/abisee/attn_vis
           <i class="right arrow icon"></i>
           Next example
         </button>
-        <select class="ui selection dropdown" multiple="" id="filter-select">
+        <select class="ui selection dropdown" multiple="" id="filter-label-select">
           <option value="">Labels</option>
+        </select>
+        <select class="ui selection dropdown" multiple="" id="filter-pred-select">
+          <option value="">Predictions</option>
         </select>
         <button class="ui button" id="filter">
           Filter
@@ -262,6 +294,12 @@ https://github.com/abisee/attn_vis
           Reload
         </button>
       </div>
+
+      <div class="ui warning message hidden" id="no-data-msg">
+        <i class="close icon"></i>
+        No data was found based on the filtering criteria.
+      </div>
+
       <h4 class="ui horizontal divider header">
           Current example
       </h4>
